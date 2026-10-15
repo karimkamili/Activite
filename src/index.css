@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+
+/* هوية Larus School: الأزرق الداكن #00215E والبرتقالي #FD5F00 (من الشعار) */
+@theme {
+  --font-sans: 'Cairo', system-ui, 'Segoe UI', Tahoma, sans-serif;
+
+  --color-navy-50: #eef2f9;
+  --color-navy-100: #d6dfee;
+  --color-navy-200: #aebfdd;
+  --color-navy-600: #1a3a78;
+  --color-navy-700: #00215e;
+  --color-navy-800: #001a4b;
+  --color-navy-900: #001338;
+
+  --color-orange-50: #fff4ec;
+  --color-orange-100: #ffe4d1;
+  --color-orange-200: #ffc7a1;
+  --color-orange-500: #fd5f00; /* لون الشعار: للزخرفة والإطارات */
+  --color-orange-600: #c74b00; /* للأزرار مع نص أبيض (تباين كافٍ) */
+  --color-orange-700: #a83f00;
+}
+
+html,
+body {
+  background-color: #f6f8fc;
+  color: var(--color-slate-800);
+}

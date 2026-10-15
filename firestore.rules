@@ -1,0 +1,99 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // settings/admins = { uids: ['uid-المهدي', ...] } يُضاف يدوياً من Firebase Console
+    function isAdmin() {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/settings/admins).data.uids;
+    }
+
+    function isDateId(date) {
+      return date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isMinute(t) {
+      return t is int && t >= 0 && t <= 1440;
+    }
+
+    function isShortText(s) {
+      return s is string && s.trim().size() > 0 && s.size() < 80;
+    }
+
+    // حجز جديد يضيفه المستخدم الحالي لنفسه
+    function isValidNewBooking(b) {
+      return b.keys().hasAll(['teacherName', 'activityName', 'start', 'end', 'durationMinutes', 'ownerUid', 'createdAt'])
+        && b.keys().hasOnly(['teacherName', 'activityName', 'start', 'end', 'durationMinutes', 'ownerUid', 'createdAt'])
+        && isShortText(b.teacherName)
+        && isShortText(b.activityName)
+        && isMinute(b.start)
+        && isMinute(b.end)
+        && b.start < b.end
+        && b.durationMinutes is int
+        && b.durationMinutes == b.end - b.start
+        && b.ownerUid == request.auth.uid
+        && b.createdAt == request.time;
+    }
+
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /availability/{date} {
+      allow read: if signedIn();
+      allow write: if isAdmin()
+        && isDateId(date)
+        && request.resource.data.keys().hasOnly(['slots'])
+        && request.resource.data.slots is list
+        && request.resource.data.slots.size() <= 20;
+    }
+
+    match /days/{date} {
+      allow read: if signedIn();
+
+      // أول حجز في اليوم: الوثيقة تُنشأ بحجز واحد فقط
+      allow create: if signedIn()
+        && isDateId(date)
+        && request.resource.data.keys().hasOnly(['bookings'])
+        && request.resource.data.bookings is map
+        && request.resource.data.bookings.keys().size() == 1
+        && isValidNewBooking(request.resource.data.bookings[request.resource.data.bookings.keys()[0]]);
+
+      // تعديل: حجز واحد فقط يُضاف أو يُحذف في كل عملية، ولا يُعدَّل أي حجز موجود
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bookings'])
+        && request.resource.data.bookings is map
+        && request.resource.data.bookings.diff(resource.data.bookings).affectedKeys().size() == 1
+        && (isAddingOwnBooking() || isRemovingAllowedBooking());
+
+      // لا يُحذف يوم كامل من الموقع؛ الحجوزات تُحذف واحداً واحداً
+      allow delete: if false;
+
+      function isAddingOwnBooking() {
+        let diff = request.resource.data.bookings.diff(resource.data.bookings);
+        let addedId = request.resource.data.bookings.keys().removeAll(resource.data.bookings.keys())[0];
+        return diff.addedKeys().size() == 1
+          && isValidNewBooking(request.resource.data.bookings[addedId]);
+      }
+
+      // الأستاذ يحذف حجزه فقط، والمهدي يحذف أي حجز
+      function isRemovingAllowedBooking() {
+        let diff = request.resource.data.bookings.diff(resource.data.bookings);
+        let removedId = resource.data.bookings.keys().removeAll(request.resource.data.bookings.keys())[0];
+        return diff.removedKeys().size() == 1
+          && (resource.data.bookings[removedId].ownerUid == request.auth.uid || isAdmin());
+      }
+    }
+
+    // كل ما عدا ذلك ممنوع
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
